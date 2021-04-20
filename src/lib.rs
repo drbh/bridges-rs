@@ -13,6 +13,7 @@ pub struct Opts {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RequestInput {
     pub job_run_id: Option<String>,
 }
