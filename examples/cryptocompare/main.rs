@@ -14,15 +14,13 @@ impl Bridge for CryptoCompare {
         }
     }
 
-    fn run(&self) -> (BridgeResult, Option<i64>) {
+    fn run(&self, job_id: String) -> (BridgeResult, Option<i64>) {
         let mut response =
             isahc::get("https://min-api.cryptocompare.com/data/price?fsym=ETH&tsyms=USD,JPY,EUR")
                 .unwrap();
         let value: Value = serde_json::from_str(&response.text().unwrap()).unwrap();
         let br = BridgeResult {
             job_run_id: String::from("test"),
-            id: None,
-            task_run_id: None,
             status: String::from("completed"),
             error: None,
             pending: false,
@@ -35,34 +33,7 @@ impl Bridge for CryptoCompare {
 
 fn main() {
     //
-
-    // should wrap this into the lib
-    println!("Now listening on localhost:8081");
-    rouille::start_server("localhost:8081", move |request| {
-        router!(request,
-            (POST) (/) => {
-                println!("{:#?}", request);
-
-                let mut data = request.data().expect("Oops, body already retrieved, problem \
-                                                      in the server");
-                let mut buf = Vec::new();
-                match data.read_to_end(&mut buf) {
-                    Ok(_) => (),
-                    Err(_) => ()
-                };
-                let s = match std::str::from_utf8(&buf) {
-                    Ok(v) => v,
-                    Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-                };
-
-                let value: Value = serde_json::from_str(&s).unwrap();
-                println!("result: {}", value);
-
-                let cc = CryptoCompare {};
-                let (resp, _) = cc.run();
-                rouille::Response::json(&resp)
-            },
-            _ => rouille::Response::empty_404()
-        )
-    });
+    let cc = CryptoCompare {};
+    let s = Server::new(cc);
+    s.start_server();
 }
