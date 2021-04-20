@@ -19,6 +19,7 @@ pub struct RequestInput {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct BridgeResult {
     pub job_run_id: String,
     // pub id: Option<String>,
