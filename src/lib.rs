@@ -1,4 +1,6 @@
+use log;
 use rouille::router;
+use rouille::{Request, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
@@ -22,8 +24,6 @@ pub struct RequestInput {
 #[serde(rename_all = "camelCase")]
 pub struct BridgeResult {
     pub job_run_id: String,
-    // pub id: Option<String>,
-    // pub task_run_id: Option<String>,
     pub status: String,
     pub error: Option<String>,
     pub pending: bool,
@@ -50,41 +50,56 @@ pub struct Server {
 
 impl Server {
     pub fn new(bridge: impl Bridge + 'static) -> Self {
-        // let mut hm: HashMap<String, Box<dyn Bridge>> = HashMap::new();
-        // self.path_map = hm;
+        env_logger::init_from_env(
+            env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
+        );
+
         Self {
             bridge: Arc::new(Mutex::new(Box::new(bridge))),
         }
     }
 
     pub fn start_server(self) {
-        println!("Now listening on localhost:8081");
+        // println!("Now listening on localhost:8081");
+        log::info!("Starting the bridge server port={}", 8081);
         rouille::start_server("localhost:8081", move |request| {
             router!(request,
                 (POST) (/) => {
-                    let mut data = request.data().expect("Oops, body already retrieved, problem \
-                                                          in the server");
-                    let mut buf = Vec::new();
-                    match data.read_to_end(&mut buf) {
-                        Ok(_) => (),
-                        Err(_) => ()
+                    // rouille::log(request, std::io::stdout(), || {
+                    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.6f");
+                    let log_ok = |req: &Request, _resp: &Response, _elap: std::time::Duration| {
+                        log::info!("{} {} {}", now, req.method(), req.raw_url());
+                        // log::info!("clientIP=\'\' code=\'\' latency=\'\' method=\'\' path=\'\' servedAt=\'{}\'", now);
                     };
-                    let s = match std::str::from_utf8(&buf) {
-                        Ok(v) => v,
-                        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+                    let log_err = |req: &Request, _elap: std::time::Duration| {
+                        log::error!("{} Handler panicked: {} {}", now, req.method(), req.raw_url());
                     };
-                    let request_input: RequestInput = serde_json::from_str(&s).unwrap();
+                    rouille::log_custom(request, log_ok, log_err, || {
 
-                    let cc = self.bridge.lock().unwrap();
+                        let mut data = request.data().expect("Oops, body already retrieved, problem \
+                                                              in the server");
+                        let mut buf = Vec::new();
+                        match data.read_to_end(&mut buf) {
+                            Ok(_) => (),
+                            Err(_) => ()
+                        };
+                        let s = match std::str::from_utf8(&buf) {
+                            Ok(v) => v,
+                            Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+                        };
+                        let request_input: RequestInput = serde_json::from_str(&s).unwrap();
+
+                        let cc = self.bridge.lock().unwrap();
 
 
-                    let job_id = match request_input.job_run_id {
-                        Some(jid) => String::from(jid),
-                        None => String::from("randomId")
-                    };
+                        let job_id = match request_input.job_run_id {
+                            Some(jid) => String::from(jid),
+                            None => String::from("randomId")
+                        };
 
-                    let (resp, _) = cc.run(job_id);
-                    rouille::Response::json(&resp)
+                        let (resp, _) = cc.run(job_id);
+                        rouille::Response::json(&resp)
+                    })
                 },
                 _ => rouille::Response::empty_404()
             )
